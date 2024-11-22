@@ -182,13 +182,13 @@ end
 function cmd_translation_z(robot, θinit, pA, z, dt, err_ts) # Tâche_1
     pD = pA # Position désirée (mouvement en Z)
     pD[3] = zB; # translation désirée
-
     # Générer les configurations articulaires avec MCI
     Q = MCI(robot, θinit, pD, dt, err_ts);
     N = Int(length(Q)/7);
-    #T=zeros(4,4);
-    #println("N = ", N);
     trajectoire = []
+
+    # Initialiser une matrice pour enregistrer les trajectoires de toutes les articulations
+    trajectoires_articulations = zeros(N, 7)  # N lignes, 7 colonnes pour chaque articulation
 
     for i=1:N
         #Vecteur d'angle articulaire du robot
@@ -198,20 +198,24 @@ function cmd_translation_z(robot, θinit, pA, z, dt, err_ts) # Tâche_1
         local T=MGD(Q[s:e],robot);
         push!(trajectoire, T[3, 4]); #Extraction de la position en z
 
+        # Enregistrer les positions angulaires pour chaque articulation
+        trajectoires_articulations[i, :] = Q[s:e];
+
         #Envoie de la commande a coppelia
         setjointposition(clientID,Q[s:e],7,0,objectname_kuka)
         sleep(dt)
     end
     trace_trajectoire(trajectoire);
+    trace_trajectoires_articulations(trajectoires_articulations);
 end
 
 
-function trace_trajectoire(trajectoire)
+function trace_trajectoire(trajectoire_z)
     # Nombre de pas
-    nombre_de_pas = 1:length(trajectoire)
+    nombre_de_pas = 1:length(trajectoire_z)
     
     # Tracé de la trajectoire
-    plot(
+    p = plot(
         nombre_de_pas, trajectoire, 
         title = "Trajectoire en fonction du nombre de pas",
         xlabel = "Nombre de pas",
@@ -221,7 +225,26 @@ function trace_trajectoire(trajectoire)
         marker = :circle,
         color = :blue
     )
-
+    display(p)
     # Sauvegarder le graphique
     savefig("trajectoire_z.png")
+end
+
+function trace_trajectoires_articulations(trajectoires_articulations)
+    # Nombre de pas
+    nombre_de_pas = 1:size(trajectoires_articulations, 1)  # Nombre de lignes dans la matrice
+    
+    # Tracé des trajectoires pour chaque articulation
+    p1 = plot(title = "Trajectoires des articulations", xlabel = "Nombre de pas", ylabel = "Position angulaire (rad)")
+
+    for j in 1:7
+        plot!(
+            nombre_de_pas, trajectoires_articulations[:, j], 
+            label = "Articulation $j", lw = 2
+        )
+    end
+    display(p1)
+
+    # Sauvegarder le graphique
+    savefig("trajectoires_articulations.png")
 end

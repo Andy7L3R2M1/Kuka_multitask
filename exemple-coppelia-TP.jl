@@ -20,7 +20,7 @@ T7=zeros(4,4);
 # Paramètres de la Tâche A
 #global pD = [-0.3668, -0.0379, 0.5634];  # Position désirée (mouvement en Z)
 global dt = 0.01; # Pas de temps
-global err_ts = 0.01;  # Tolérance d'arrêt
+global err_ts = 0.001;  # Tolérance d'arrêt
 global zB = 0.5;
 
 # Robot en position initiale
@@ -29,33 +29,13 @@ sleep(2)
 
 #Appel Tâche_1 :
 #cmd_translation_z(robot, θinit, pA, zB, dt, err_ts);
-pD = pA # Position désirée (mouvement en Z)
-    pD[3] = zB; # translation désirée
 
-    # Générer les configurations articulaires avec MCI
-    Q = MCI(robot, θinit, pD, dt, err_ts);
-    N = Int(length(Q)/7);
-    T=zeros(4,4);
-    #println("N = ", N);
-    trajectoire = []
+#Appel Tâche_2 :
 
-    for i=1:N
-        #Vecteur d'angle articulaire du robot
-        s = (7*i)-6; #start
-        e = (7*(i+1))-7; #end
-
-        T=MGD(Q[s:e],robot);
-        println("T = ",T);
-        push!(trajectoire, T[3, 4]); #Extraction de la position en z
-
-        #Envoie de la commande a coppelia
-        setjointposition(clientID,Q[s:e],7,0,objectname_kuka)
-        sleep(dt)
-    end
-    trace_trajectoire(trajectoire);
-
+#Reset des positions
 print("pos=",getjointposition(clientID,7,0,objectname_kuka))
 
+#Arret de la simulation
 stopsimulation(clientID,simx_opmode_oneshot) # Arrêt de la simulation
 
 
