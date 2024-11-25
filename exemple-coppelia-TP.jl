@@ -12,16 +12,21 @@ if clientID==0 println("Connexion établie")
 end
 
 #Parametre global du robot sur Coppélia_Sim
-global robot=CreateRobotKukaLwr();
-θinit=[0.143019, -0.109465, -0.011994, -1.1788, -0.154233, 0.93555, 0.264868];
-pA=[-0.3668, -0.0379, 0.8634];
+global robot=CreateRobotKukaLwr()
+dt = 0.01; # Pas de temps
+θinit=[0.143019, -0.109465, -0.011994, -1.1788, -0.154233, 0.93555, 0.264868]
+pA=[-0.3668, -0.0379, 0.8634]
+CoM_pA = CoM(θinit, robot)
 T7=zeros(4,4);
 
 # Paramètres de la Tâche A
-#global pD = [-0.3668, -0.0379, 0.5634];  # Position désirée (mouvement en Z)
-dt = 0.01; # Pas de temps
-err_ts = 0.001;  # Tolérance d'arrêt
-zB = 0.5;
+err_ts = 0.001  # Tolérance d'arrêt
+zB = 0.5
+
+# Paramètres de la Tâche B
+err_CoM = 0.007  # Tolérance d'arrêt
+CoM_d = CoM_pA
+CoM_d[1:2] = [0.0, 0.1]
 
 # Robot en position initiale
 init_pos()
@@ -31,6 +36,9 @@ sleep(2)
 #cmd_translation_z(robot, θinit, pA, zB, dt, err_ts);
 
 #Appel Tâche_2 :
+#Q2 = MCI_CoM(robot, θinit, CoM_d, dt, err_CoM);
+cmd_plan(robot, θinit, CoM_d, dt, err_CoM);
+
 
 #Reset des positions
 print("pos=",getjointposition(clientID,7,0,objectname_kuka))
