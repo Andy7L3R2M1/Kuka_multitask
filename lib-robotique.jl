@@ -216,7 +216,7 @@ function trace_trajectoire(trajectoire_z)
     
     # Tracé de la trajectoire
     p = plot(
-        nombre_de_pas, trajectoire, 
+        nombre_de_pas, trajectoire_z, 
         title = "Trajectoire en fonction du nombre de pas",
         xlabel = "Nombre de pas",
         ylabel = "Position en Z",
