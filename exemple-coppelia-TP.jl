@@ -1,4 +1,4 @@
- #connexion avec VREP
+#connexion avec VREP
 PATHCSIM="C:/Users/Acer/Documents/Etude/Année 2023-2024/Polytech/MEA5/modelisation et cmd 3d/TP1-Modélisation avancée- hierarchie des taches/Kuka_multitask/";
 include("C:/Users/Acer/Documents/Etude/Année 2023-2024/Polytech/MEA5/modelisation et cmd 3d/TP1-Modélisation avancée- hierarchie des taches/Kuka_multitask/lib-robotique.jl"); 
 CreateRobotKukaLwr()
@@ -22,23 +22,25 @@ T7=zeros(4,4);
 # Paramètres de la Tâche A
 err_ts = 0.001  # Tolérance d'arrêt
 zB = 0.5
+pD = pA # Position désirée (mouvement en Z)
+pD[3] = zB # translation désirée
 
 # Paramètres de la Tâche B
-err_CoM = 0.007  # Tolérance d'arrêt
+err_CoM = 0.001  # Tolérance d'arrêt
 CoM_d = CoM_pA
 CoM_d[1:2] = [0.0, 0.1]
-
 # Robot en position initiale
 init_pos()
 sleep(2)
 
 #Appel Tâche_1 :
-#cmd_translation_z(robot, θinit, pA, zB, dt, err_ts);
+#cmd_translation_z(robot, θinit, pD, dt, err_ts);
 
 #Appel Tâche_2 :
-#Q2 = MCI_CoM(robot, θinit, CoM_d, dt, err_CoM);
-cmd_plan(robot, θinit, CoM_d, dt, err_CoM);
+#cmd_plan(robot, θinit, CoM_d, dt, err_CoM);
 
+# Hierarchie = Tâche_1 (CoM => + importante) et 2 (translation en z)
+cmd_hierarchie_2_taches(robot, θinit, pD, CoM_d, dt, err_ts, err_CoM)
 
 #Reset des positions
 print("pos=",getjointposition(clientID,7,0,objectname_kuka))

@@ -183,19 +183,21 @@ function MCI(robot, θ, Pd, dt, err_ts)
 
         # Étape 3 : Calcul de la Jacobienne
         J = Jacobian(q, robot, Pe)  # Jacobienne 6x7 (3 position + 3 orientation)
-        J_translation = J[1:3, :]  # Extraction des 3 premières lignes pour la translation
-
+        J_translation = J[3, :]  # Extraction des 3 premières lignes pour la translation
+        #print("size J_z = $(size(J_translation))")
         # Étape 4 : Résolution par pseudo-inverse
-        q_dot = pinv(J_translation) * epsilon_p  # Résolution pour les vitesses articulaires (7x1)
+        
+        q_dot = pinv(J_translation) * epsilon_p[3]  # Résolution pour les vitesses articulaires (7x1)
 
         # Étape 5 : Mise à jour des angles articulaires par intégration
+        q_dot = q_dot'
         q = q + q_dot * dt
-
+        
         # Sauvegarde dans Q_tot
         Q_tot = vcat(Q_tot, q)  # Concaténer verticalement, ajouter une nouvelle ligne
 
         # Étape 6 : Vérification des conditions d'arrêt
-        if all(abs.(epsilon_p) .< err_ts)
+        if all(abs.(epsilon_p[3]) .< err_ts)
             condition = true
         end
     end
@@ -203,9 +205,9 @@ function MCI(robot, θ, Pd, dt, err_ts)
     return Q_tot
 end
 
-function MCI_CoM(robot, θ, CoM_d, dt, err_CoM)
+function MCI_CoM(robot, θnit, CoM_d, dt, err_CoM)
     # Initialisation
-    q = θ  # Configuration articulaire initiale
+    q = θnit  # Configuration articulaire initiale
     Q_tot = []
     Q_tot = vcat(Q_tot, q)  # Initialisation avec q (vecteur 7x1, pas de crochet [])
     condition = false  # Critère d'arrêt
@@ -218,11 +220,12 @@ function MCI_CoM(robot, θ, CoM_d, dt, err_CoM)
         epsilon_CoM = CoM_d[1:3] - CoM_i  # Erreur de position (3x1)
 
         # Étape 3 : Calcul de la Jacobienne
-        J = JacobianCoM(θ, robot, CoM_Init)  # Jacobienne 6x7 (3 position + 3 orientation)
-        J_plan = J[1:3, :]  # Extraction des 3 premières lignes pour la translation
+        J = JacobianCoM(q, robot, CoM_Init)  # Jacobienne 3x7 (3 position + 3 orientation)
+        J_plan = J[1:2, :]
 
         # Étape 4 : Résolution par pseudo-inverse
-        q_dot = pinv(J_plan) * epsilon_CoM  # Résolution pour les vitesses articulaires (7x1)
+        q_dot = pinv(J_plan) * epsilon_CoM[1:2]  # Résolution pour les vitesses articulaires (7x1)
+        #q_dot = q_dot';
 
         # Étape 5 : Mise à jour des angles articulaires par intégration
         q = q + q_dot * dt
@@ -231,7 +234,7 @@ function MCI_CoM(robot, θ, CoM_d, dt, err_CoM)
         Q_tot = vcat(Q_tot, q)  # Concaténer verticalement, ajouter une nouvelle ligne
 
         # Étape 6 : Vérification des conditions d'arrêt
-        if all(abs.(epsilon_CoM) .< err_CoM)
+        if all(norm(epsilon_CoM[1:2]) < err_CoM)
             condition = true
         end
     end
@@ -239,9 +242,7 @@ function MCI_CoM(robot, θ, CoM_d, dt, err_CoM)
     return Q_tot
 end
 
-function cmd_translation_z(robot, θinit, pA, zB, dt, err_ts) # Tâche_1
-    pD = pA # Position désirée (mouvement en Z)
-    pD[3] = zB # translation désirée
+function cmd_translation_z(robot, θinit, pD, dt, err_ts) # Tâche_1
     # Générer les configurations articulaires avec MCI
     Q = MCI(robot, θinit, pD, dt, err_ts)
     N = Int(length(Q) / 7)
@@ -266,10 +267,11 @@ function cmd_translation_z(robot, θinit, pA, zB, dt, err_ts) # Tâche_1
         sleep(dt)
     end
     trace_trajectoire(trajectoire)
-    trace_trajectoires_articulations(trajectoires_articulations)
+    trace_trajectoires_articulations(trajectoires_articulations, "trajectoires_articulations_transition_z.png")
 end
 
-function cmd_plan(robot, θ, CoM_d, dt, err_CoM) # Tâche_2
+
+function cmd_plan(robot, θinit, CoM_d, dt, err_CoM) # Tâche_2
 
     # Générer les configurations articulaires avec MCI_CoM
     Q = MCI_CoM(robot, θinit, CoM_d, dt, err_CoM)
@@ -296,8 +298,85 @@ function cmd_plan(robot, θ, CoM_d, dt, err_CoM) # Tâche_2
     end
     # Tracé des trajectoires
     trace_trajectoire_com(trajectoire_CoM)
-    trace_trajectoires_articulations(trajectoires_articulations)
+    trace_trajectoires_articulations(trajectoires_articulations, "trajectoires_articulations_CoM.png")
 end
+
+
+function calcul_hierarchie_2_taches(robot, θinit, pD, CoM_d, dt, err_ts, err_CoM) # Tâche_1 (CoM => + importante) et 2 (translation en z)
+    q = θinit  # Configuration articulaire initiale
+    Q_tot = []
+    Q_tot = vcat(Q_tot, q)  # Initialisation avec q (vecteur 7x1, pas de crochet [])
+    condition = false  # Critère d'arrêt
+    
+    while !condition
+        # Calcul epsilon de t1
+        CoM_Init = CoM(q, robot)  # Matrice homogène 4x4 de l'effecteur
+        CoM_i = CoM_Init[1:3]  # Position actuelle de l'effecteur (3x1)
+        e1 = CoM_d[1:3] - CoM_i  # Erreur de position (3x1)
+        Ja = JacobianCoM(q, robot, CoM_Init)
+        J1 = Ja[1:2, :]
+
+        # Calcul epsilon de t2
+        X = MGD(q, robot)  # Matrice homogène 4x4 de l'effecteur
+        pE = X[1:3, 4]  # Position actuelle de l'effecteur (3x1)
+        e2 = pD - pE  # Erreur de position (3x1)
+        Jb = Jacobian(q, robot, pE)  # Jacobienne 6x7 (3 position + 3 orientation)
+        J2 = Jb[3, :] 
+        J2 = J2'
+
+        #Calcul des tâches 
+        P1 = I(7) - pinv(J1)*J1
+        u1 = pinv(J1) * e1[1:2]
+        u2 = pinv(J2*P1)*(e2[3] - J2*u1)
+
+        #Intégration
+        q_dot = u1 + u2 # Résolution pour les vitesses articulaires (7x1)
+        q = q + q_dot * dt
+
+        # Sauvegarde dans Q_tot
+        Q_tot = vcat(Q_tot, q)
+
+        if all((norm(e1[1:2]) .< err_CoM) .&& (abs.(e2[3]) .< err_ts))
+            condition = true
+        end
+    end
+    return Q_tot
+end
+
+
+function cmd_hierarchie_2_taches(robot, θinit, pD, CoM_d, dt, err_ts, err_CoM)
+    # Générer les configurations articulaires avec MCI_CoM
+    Q = calcul_hierarchie_2_taches(robot, θinit, pD, CoM_d, dt, err_ts, err_CoM) # Tâche_1 (CoM => + importante) et 2 (translation en z)
+    N = Int(length(Q) / 7)
+    trajectoire_parallele_z = []
+    trajectoire_parallele_CoM = []
+    trajectoires_articulations_parallele = zeros(N, 7)  # N lignes, 7 colonnes pour chaque articulations
+
+    for i = 1:N
+        #Vecteur d'angle articulaire du robot
+        s = (7 * i) - 6 #start
+        e = (7 * (i + 1)) - 7 #end
+        q_i = Q[s:e]  # Configuration articulaire actuelle
+
+        # Calcul du centre de masse pour cette configuration
+        CoM_i = CoM(q_i, robot)
+        push!(trajectoire_parallele_CoM, CoM_i[1:3])  # Sauvegarde du centre de masse
+
+        T = MGD(q_i, robot)
+        push!(trajectoire_parallele_z, T[3, 4]) #Extraction de la position en z
+
+        trajectoires_articulations_parallele[i, :] = q_i
+
+        #Envoie de la commande a coppelia
+        setjointposition(clientID, Q[s:e], 7, 0, objectname_kuka)
+        sleep(dt)
+    end
+    # Tracé des trajectoires
+    trace_trajectoire_com(trajectoire_parallele_CoM)
+    trace_trajectoire(trajectoire_parallele_z)
+    trace_trajectoires_articulations(trajectoires_articulations_parallele_z, "trajectoires_articulations_parallele.png")
+end
+
 
 # Fonction de trace ----------------------------------------------------------------------------
 
@@ -327,32 +406,44 @@ function trace_trajectoire_com(trajectoire_com)
     trajectoire_y = [p[2] for p in trajectoire_com]
     trajectoire_z = [p[3] for p in trajectoire_com]
 
+    # Nombre de pas
+    nombre_de_pas = 1:size(trajectoire_com, 1)  # Nombre de lignes dans la matrice
+
     # Tracé des trajectoires 2D
-    p1 = plot(nombre_de_pas, trajectoire_x, label="x", color=:red)
-    plot!(nombre_de_pas, trajectoire_y, label="y", color=:green)
-    plot!(nombre_de_pas, trajectoire_z, label="z", color=:blue, title="Trajectoire CoM", xlabel="Nombre de pas", ylabel="Position (m)")
+    p1 = plot(trajectoire_x, trajectoire_y, color=:blue, title="Trajectoire CoM de y en fonction de x", xlabel="CoM x", ylabel="CoM y")
     display(p1)
-    savefig("trajectoire_com.png")
+    savefig("trajectoire_CoM.png")
 
     # Création du graphique 3D - Effectuez l'affichage après la fin de la simulation
     p2 = plot(trajectoire_x, trajectoire_y, trajectoire_z, lw=2, label="Trajectoire", xlabel="X", ylabel="Y", zlabel="Z", title="Trajectoire 3D")
-    
+
     # Affichage du point final
-    final_point = (trajectoire_x[end], trajectoire_y[end], trajectoire_z[end])
-    scatter!(final_point[1], final_point[2], final_point[3], label="Point Final", color=:red, marker=:star5, markersize=8)
-   
+    final_point_x = trajectoire_x[end]
+    final_point_y = trajectoire_y[end]
+    final_point_z = trajectoire_z[end]
+
+    # Arrondir les coordonnées à 4 chiffres significatifs
+    rounded_x = round(final_point_x, digits=4)
+    rounded_y = round(final_point_y, digits=4)
+    rounded_z = round(final_point_z, digits=4)
+
+    # Ajouter une annotation pour afficher les coordonnées arrondies
+    coords_text = "($rounded_x, $rounded_y, $rounded_z)"
+    annotate!(final_point_x, final_point_y, final_point_z, text(coords_text, :red, 10))
+
+    # Affichage et sauvegarde
     display(p2)
     savefig("trajectoire3D_com.png")
 end
 
 
 
-function trace_trajectoires_articulations(trajectoires_articulations)
+function trace_trajectoires_articulations(trajectoires_articulations, save_name)
     # Nombre de pas
     nombre_de_pas = 1:size(trajectoires_articulations, 1)  # Nombre de lignes dans la matrice
 
     # Tracé des trajectoires pour chaque articulation
-    p1 = plot(title="Trajectoires des articulations", xlabel="Nombre de pas", ylabel="Position angulaire (rad)")
+    p1 = plot(title=save_name, xlabel="Nombre de pas", ylabel="Position angulaire (rad)")
 
     for j in 1:7
         plot!(
@@ -363,5 +454,5 @@ function trace_trajectoires_articulations(trajectoires_articulations)
     display(p1)
 
     # Sauvegarder le graphique
-    savefig("trajectoires_articulations.png")
+    savefig(save_name)
 end
